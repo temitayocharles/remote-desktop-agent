@@ -15,48 +15,35 @@ if [[ -z "$ROOT" || ! -f "$ROOT/pyproject.toml" ]]; then
   echo "Run this script from a Git checkout of remote-desktop-agent." >&2
   exit 1
 fi
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "Python 3.11 or newer is required." >&2
-  exit 1
-fi
+command -v python3 >/dev/null 2>&1 || { echo "Python 3.11 or newer is required." >&2; exit 1; }
 if [[ ! -f "$ROOT/.env" ]]; then
   cp "$ROOT/.env.example" "$ROOT/.env"
   echo "Created $ROOT/.env. Configure the required values, then rerun this script." >&2
   exit 2
 fi
-
 mkdir -p "$CONFIG_DIR" "$BIN_DIR" "$LOG_DIR" "$HOME/Library/LaunchAgents"
-
-# Preserve runtime secrets and runner settings outside the Git checkout.
-if [[ ! -f "$RUNNER_ENV" ]]; then
-  cp "$ROOT/.env" "$RUNNER_ENV"
-fi
-# A local runner is outside Docker and must never resolve the Docker-only service name.
+if [[ ! -f "$RUNNER_ENV" ]]; then cp "$ROOT/.env" "$RUNNER_ENV"; fi
 if grep -q '^CONTROL_PLANE_URL=' "$RUNNER_ENV"; then
   sed -i '' 's|^CONTROL_PLANE_URL=.*|CONTROL_PLANE_URL=http://127.0.0.1:8080|' "$RUNNER_ENV"
 else
   printf '\nCONTROL_PLANE_URL=http://127.0.0.1:8080\n' >> "$RUNNER_ENV"
 fi
 printf 'REPO_DIR=%s\n' "$ROOT" > "$CONFIG_DIR/repository.env"
-
 python3 -m venv "$ROOT/.venv"
 "$ROOT/.venv/bin/python" -m pip install --upgrade pip
 "$ROOT/.venv/bin/pip" install -e "$ROOT"
-
+"$ROOT/.venv/bin/python" -m playwright install chromium
 cat > "$LAUNCHER" <<'RUNNER'
 #!/usr/bin/env bash
 set -euo pipefail
 RUNTIME_ROOT="$HOME/Library/Application Support/TelegramOperatorAgent"
-# shellcheck disable=SC1090
 source "$RUNTIME_ROOT/config/repository.env"
-# shellcheck disable=SC1090
 source "$RUNTIME_ROOT/config/runner.env"
 export PYTHONPATH="$REPO_DIR/apps/runner"
 cd "$REPO_DIR"
 exec "$REPO_DIR/.venv/bin/python" -m agent_runner.main
 RUNNER
 chmod 700 "$LAUNCHER"
-
 cat > "$LAUNCH_AGENT" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -70,13 +57,8 @@ cat > "$LAUNCH_AGENT" <<PLIST
   <key>StandardErrorPath</key><string>${LOG_DIR}/runner.err.log</string>
 </dict></plist>
 PLIST
-
 launchctl bootout "gui/$(id -u)" "$LAUNCH_AGENT" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$LAUNCH_AGENT"
 launchctl kickstart -k "gui/$(id -u)/${LABEL}"
-
-echo "Mac runner installed."
-echo "Repository: $ROOT"
-echo "Runtime configuration: $RUNNER_ENV"
-echo "Logs: $LOG_DIR"
-echo "Use ./scripts/sync_mac.sh for future Git-based upgrades."
+echo "Mac runner installed with browser automation."
+echo "Sign in once in the Operator Browser window when it opens; the session is persisted at ~/.telegram-operator-agent/browser-profile."
