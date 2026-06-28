@@ -9,6 +9,7 @@ class Config(BaseSettings):
     runner_os: str = "macos"
     runner_poll_seconds: int = 3
     runner_artifact_dir: str = "./artifacts"
+    runner_pid_file: str = ""
     llm_base_url: str = ""
     llm_api_key: str = ""
     llm_model: str = ""

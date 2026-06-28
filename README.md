@@ -2,15 +2,15 @@
 
 A Telegram-controlled remote operator for macOS and Windows. The agent executes explicit requests on a registered computer, records evidence, verifies task outcomes, and requires approval only for meaningful-impact actions.
 
-## Canonical installation
+## macOS
 
-Keep one Git checkout at:
+Canonical checkout:
 
 ```bash
 /Volumes/512-B/Documents/PERSONAL/remote-desktop-agent
 ```
 
-First-time setup or an upgrade that changes runner dependencies:
+Install or upgrade runner dependencies:
 
 ```bash
 cd "/Volumes/512-B/Documents/PERSONAL/remote-desktop-agent"
@@ -18,11 +18,62 @@ git pull --ff-only
 bash ./scripts/bootstrap_mac.sh
 ```
 
-Routine source updates:
+Routine update:
 
 ```bash
-cd "/Volumes/512-B/Documents/PERSONAL/remote-desktop-agent"
 bash ./scripts/sync_mac.sh
+```
+
+## Windows distribution
+
+The Windows runner is designed for a recipient-owned computer and does not copy Telegram bot credentials. Each person must use a unique `RUNNER_ID` and `RUNNER_TOKEN` and a control-plane address they are authorized to use.
+
+Prerequisites: Windows 10/11, PowerShell 5.1+, Git, and Python 3.11+. Docker Desktop is needed only when that Windows computer also hosts the control plane locally.
+
+```powershell
+git clone https://github.com/temitayocharles/remote-desktop-agent.git $HOME\source\remote-desktop-agent
+cd $HOME\source\remote-desktop-agent
+Copy-Item .\scripts\runner.env.example "$env:LOCALAPPDATA\TelegramOperatorAgent\config\runner.env"
+notepad "$env:LOCALAPPDATA\TelegramOperatorAgent\config\runner.env"
+.\scripts\bootstrap_windows.ps1 -ControlPlaneUrl "https://your-authorized-control-plane.example"
+```
+
+The Windows installer keeps runtime state outside the repository:
+
+```text
+%LOCALAPPDATA%\TelegramOperatorAgent\
+├── config\runner.env
+├── config\repository.env
+├── bin\run-runner.cmd
+├── logs\
+├── artifacts\
+└── browser-profile\
+```
+
+It creates a current-user Startup shortcut, so the runner begins in the interactive user session at sign-in. This is required for headed browser automation and is safer than installing a privileged Windows service.
+
+Update a Windows runner:
+
+```powershell
+.\scripts\sync_windows.ps1
+```
+
+Diagnose it:
+
+```powershell
+.\scripts\diagnose_windows.ps1
+```
+
+Remove it while retaining configuration:
+
+```powershell
+.\scripts\uninstall_windows.ps1
+```
+
+Remove configuration and browser profile too:
+
+```powershell
+.\scripts\uninstall_windows.ps1 -RemoveRuntime
 ```
 
 ## Execution guarantees
@@ -31,31 +82,14 @@ bash ./scripts/sync_mac.sh
 - Every task creates durable evidence under `RUNNER_ARTIFACT_DIR/<task-id>/`.
 - The runner checks for cancellation between actions and while shell commands are running.
 - A user cancellation prevents a late `SUCCEEDED` update from overwriting `CANCELLED`.
-- Browser workflows and native workflows must return verified evidence before a task is marked successful.
+- Browser and native workflows must return verified evidence before a task is marked successful.
 
-## Current native workflows
+## Current workflows
 
 - Browser automation through a persisted Chromium profile.
 - ChatGPT image generation followed by local file verification.
-- Read-only macOS Mail Junk/Spam search that returns sender, subject, and date metadata.
-- Application launch on macOS.
-
-For macOS Mail access, macOS may prompt for Automation permission. Grant it only to the local runner process when you intend to use Mail automation.
-
-## Commands
-
-```text
-Open ChatGPT and create a hyper-realistic image of a beer and save the photo in desktop.
-Open Mail and search for spam emails.
-shell: pwd
-browser: https://example.com
-app: Safari
-read: ~/Documents/example.txt
-write: ~/Documents/example.txt
-replacement file content
-```
-
-Use `/devices`, `/tasks`, `/status <task-id>`, and `/cancel <task-id>` for operator controls.
+- Read-only macOS Mail Junk/Spam search with sender, subject, and date metadata.
+- Application launch.
 
 ## Validation
 
