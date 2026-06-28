@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import platform
 import subprocess
 from typing import Any
@@ -17,10 +16,7 @@ def _require_macos() -> None:
 
 def _osascript(script: str, *args: str) -> str:
     _require_macos()
-    command = ["osascript", "-e", script]
-    for value in args:
-        command.extend(["-e", value])
-    completed = subprocess.run(command, capture_output=True, text=True, timeout=90)
+    completed = subprocess.run(["osascript", "-e", script, "--", *args], capture_output=True, text=True, timeout=90)
     if completed.returncode != 0:
         raise MacOSWorkflowError(completed.stderr.strip() or "AppleScript execution failed")
     return completed.stdout.strip()
@@ -50,7 +46,7 @@ on run argv
                 if mailboxName contains "Junk" or mailboxName contains "Spam" then
                     set messageCount to count of messages of b
                     repeat with i from 1 to messageCount
-                        if (count of outputLines) ≥ maxCount then exit repeat
+                        if (count of outputLines) is greater than or equal to maxCount then exit repeat
                         set m to message i of b
                         set senderText to sender of m
                         set subjectText to subject of m
@@ -59,9 +55,9 @@ on run argv
                         end if
                     end repeat
                 end if
-                if (count of outputLines) ≥ maxCount then exit repeat
+                if (count of outputLines) is greater than or equal to maxCount then exit repeat
             end repeat
-            if (count of outputLines) ≥ maxCount then exit repeat
+            if (count of outputLines) is greater than or equal to maxCount then exit repeat
         end repeat
     end tell
     set AppleScript's text item delimiters to linefeed
@@ -74,11 +70,4 @@ end run
         parts = line.split("\t")
         if len(parts) >= 3:
             messages.append({"sender": parts[0], "subject": parts[1], "date": "\t".join(parts[2:])})
-    return {
-        "type": "macos_mail_search",
-        "mailbox": "Junk/Spam",
-        "query": query,
-        "count": len(messages),
-        "messages": messages,
-        "verified": True,
-    }
+    return {"type": "macos_mail_search", "mailbox": "Junk/Spam", "query": query, "count": len(messages), "messages": messages, "verified": True}
