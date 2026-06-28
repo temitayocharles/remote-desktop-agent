@@ -39,13 +39,22 @@ def _cancelled(check: Callable[[], bool] | None) -> None:
 def _run_shell(command: str, cancelled: Callable[[], bool] | None) -> dict[str, Any]:
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     deadline = time.monotonic() + config.task_timeout_seconds
-    while process.poll() is None:
-        _cancelled(cancelled)
-        if time.monotonic() >= deadline:
+    try:
+        while process.poll() is None:
+            _cancelled(cancelled)
+            if time.monotonic() >= deadline:
+                process.kill()
+                stdout, stderr = process.communicate()
+                raise TimeoutError(f"shell command exceeded {config.task_timeout_seconds} seconds: {stderr[-1000:]}")
+            time.sleep(0.25)
+    except TaskCancelled:
+        process.terminate()
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
             process.kill()
-            stdout, stderr = process.communicate()
-            raise TimeoutError(f"shell command exceeded {config.task_timeout_seconds} seconds: {stderr[-1000:]}")
-        time.sleep(0.25)
+            process.communicate()
+        raise
     stdout, stderr = process.communicate()
     result = {"type": "shell", "exit_code": process.returncode, "stdout": stdout[-12000:], "stderr": stderr[-12000:]}
     if process.returncode != 0:
