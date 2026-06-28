@@ -33,6 +33,7 @@ python3 -m venv "$ROOT/.venv"
 "$ROOT/.venv/bin/python" -m pip install --upgrade pip
 "$ROOT/.venv/bin/pip" install -e "$ROOT"
 "$ROOT/.venv/bin/python" -m playwright install chromium
+bash "$ROOT/scripts/compose.sh" up -d --build
 cat > "$LAUNCHER" <<'RUNNER'
 #!/usr/bin/env bash
 set -euo pipefail

@@ -11,7 +11,7 @@ if [[ -z "$ROOT" || ! -f "$ROOT/pyproject.toml" ]]; then
   exit 1
 fi
 if [[ ! -f "$RUNNER_ENV" ]]; then
-  echo "Stable runner configuration is missing. Run ./scripts/bootstrap_mac.sh once first." >&2
+  echo "Stable runner configuration is missing. Run bash ./scripts/bootstrap_mac.sh once first." >&2
   exit 2
 fi
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -19,14 +19,12 @@ if [[ -n "$(git status --porcelain)" ]]; then
   git status --short >&2
   exit 3
 fi
-
 git fetch --prune origin
 git pull --ff-only
 "$ROOT/.venv/bin/pip" install -e "$ROOT"
-
-docker compose up -d --build
+"$ROOT/.venv/bin/python" -m playwright install chromium
+bash "$ROOT/scripts/compose.sh" up -d --build
 launchctl kickstart -k "gui/$(id -u)/${LABEL}"
-
 curl -fsS --max-time 10 http://127.0.0.1:8080/healthz
 echo
 echo "Sync complete. Runner logs: $RUNTIME_ROOT/logs/runner.out.log"

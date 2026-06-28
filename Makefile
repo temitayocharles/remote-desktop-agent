@@ -12,10 +12,10 @@ run-bot:
 run-runner:
 	PYTHONPATH=apps/runner python3 -m agent_runner.main
 up:
-	docker compose up -d --build
+	bash ./scripts/compose.sh up -d --build
 down:
-	docker compose down
+	bash ./scripts/compose.sh down
 bootstrap-mac:
-	./scripts/bootstrap_mac.sh
+	bash ./scripts/bootstrap_mac.sh
 sync-mac:
-	./scripts/sync_mac.sh
+	bash ./scripts/sync_mac.sh
