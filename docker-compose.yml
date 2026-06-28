@@ -1,0 +1,18 @@
+services:
+  control-plane:
+    build: {context: ., dockerfile: infrastructure/docker/control-plane.Dockerfile}
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/agent.db}
+      CONTROL_PLANE_BOT_TOKEN: ${CONTROL_PLANE_BOT_TOKEN}
+    ports: ["127.0.0.1:8080:8080"]
+    volumes: ["control-plane-data:/app/data"]
+    restart: unless-stopped
+  telegram-bot:
+    build: {context: ., dockerfile: infrastructure/docker/telegram-bot.Dockerfile}
+    env_file: .env
+    environment: {CONTROL_PLANE_URL: http://control-plane:8080}
+    depends_on: [control-plane]
+    restart: unless-stopped
+volumes:
+  control-plane-data:
