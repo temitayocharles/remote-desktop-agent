@@ -12,16 +12,17 @@ if ($env:OS -ne 'Windows_NT') { throw 'This installer must run on Windows.' }
 $Repo = (Resolve-Path $RepositoryPath).Path
 if (-not (Test-Path (Join-Path $Repo 'pyproject.toml'))) { throw 'RepositoryPath must point to remote-desktop-agent.' }
 
-$Python = $null
+$PythonExe = $null
+$PythonPrefixArgs = @()
 if (Get-Command py -ErrorAction SilentlyContinue) {
   & py -3.11 -c "import sys; assert sys.version_info >= (3,11)" 2>$null
-  if ($LASTEXITCODE -eq 0) { $Python = @('py','-3.11') }
+  if ($LASTEXITCODE -eq 0) { $PythonExe = 'py'; $PythonPrefixArgs = @('-3.11') }
 }
-if (-not $Python -and (Get-Command python -ErrorAction SilentlyContinue)) {
+if (-not $PythonExe -and (Get-Command python -ErrorAction SilentlyContinue)) {
   & python -c "import sys; assert sys.version_info >= (3,11)" 2>$null
-  if ($LASTEXITCODE -eq 0) { $Python = @('python') }
+  if ($LASTEXITCODE -eq 0) { $PythonExe = 'python' }
 }
-if (-not $Python) { throw 'Python 3.11 or newer is required. Install it, reopen PowerShell, then rerun this script.' }
+if (-not $PythonExe) { throw 'Python 3.11 or newer is required. Install it, reopen PowerShell, then rerun this script.' }
 
 $RuntimeRoot = Join-Path $env:LOCALAPPDATA 'TelegramOperatorAgent'
 $ConfigDir = Join-Path $RuntimeRoot 'config'
@@ -62,7 +63,7 @@ if ($Missing.Count -gt 0) {
   throw "Configure $RunnerEnv with unique $($Missing -join ', ') values. The Windows runner intentionally does not copy Telegram or control-plane bot credentials."
 }
 
-& $Python[0] $Python[1..($Python.Count-1)] -m venv (Join-Path $Repo '.venv')
+& $PythonExe @PythonPrefixArgs -m venv (Join-Path $Repo '.venv')
 $VenvPython = Join-Path $Repo '.venv\Scripts\python.exe'
 & $VenvPython -m pip install --upgrade pip
 & $VenvPython -m pip install -e $Repo

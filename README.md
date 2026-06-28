@@ -33,10 +33,12 @@ Prerequisites: Windows 10/11, PowerShell 5.1+, Git, and Python 3.11+. Docker Des
 ```powershell
 git clone https://github.com/temitayocharles/remote-desktop-agent.git $HOME\source\remote-desktop-agent
 cd $HOME\source\remote-desktop-agent
-Copy-Item .\scripts\runner.env.example "$env:LOCALAPPDATA\TelegramOperatorAgent\config\runner.env"
+.\scripts\bootstrap_windows.ps1 -NoStart
 notepad "$env:LOCALAPPDATA\TelegramOperatorAgent\config\runner.env"
 .\scripts\bootstrap_windows.ps1 -ControlPlaneUrl "https://your-authorized-control-plane.example"
 ```
+
+The first installer call creates a runner-only configuration file and exits until the recipient supplies unique runner credentials. It never copies Telegram bot credentials from the repository. The second call validates the configuration, installs dependencies and Chromium, creates the interactive startup entry, and starts the runner.
 
 The Windows installer keeps runtime state outside the repository:
 
