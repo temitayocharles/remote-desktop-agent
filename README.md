@@ -1,24 +1,55 @@
 # Telegram Operator Agent
 
-A Telegram-controlled remote operator for macOS and Windows. It accepts direct messages only from one configured Telegram numeric user ID, dispatches to registered devices, preserves task state and evidence, and uses explicit approval for destructive or irreversible actions.
+A Telegram-controlled remote operator for macOS and Windows. It accepts direct messages only from one configured Telegram numeric user ID, dispatches to registered devices, preserves task state and evidence, and requires explicit approval for destructive or irreversible actions.
 
-## Deploy
+## Stable macOS installation
 
-1. Create a Telegram bot through BotFather and copy the bot token.
-2. Obtain your immutable numeric Telegram user ID.
-3. Copy `.env.example` to `.env`. Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_USER_ID`, `CONTROL_PLANE_BOT_TOKEN`, `RUNNER_ID`, and `RUNNER_TOKEN`. For natural-language task planning, also configure `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL`.
-4. Run `docker compose up -d --build` on the host that runs the control plane.
-5. On the Mac where tasks execute, run `./scripts/bootstrap_mac.sh`. On Windows, run `scripts/bootstrap_windows.ps1`.
-
-Generate control-plane and runner tokens locally:
+Do not run the application from disposable Downloads extractions. Clone this repository once into a durable location, for example:
 
 ```bash
-python3 -c 'import secrets; print(secrets.token_urlsafe(48)); print(secrets.token_urlsafe(48))'
+git clone https://github.com/temitayocharles/remote-desktop-agent.git \
+  "$HOME/Documents/PERSONAL/remote-desktop-agent"
+cd "$HOME/Documents/PERSONAL/remote-desktop-agent"
+cp .env.example .env
 ```
 
-## Telegram commands
+Configure `.env` with the Telegram token, owner numeric user ID, control-plane token, runner token, and optional LLM settings. For a Mac runner on the same host as Docker, keep:
 
-Send normal language if an OpenAI-compatible LLM is configured. Without an LLM, use explicit commands:
+```dotenv
+CONTROL_PLANE_URL=http://127.0.0.1:8080
+```
+
+Install the control plane and stable runner once:
+
+```bash
+docker compose up -d --build
+./scripts/bootstrap_mac.sh
+```
+
+The installer stores runtime configuration and logs outside the Git checkout:
+
+```text
+~/Library/Application Support/TelegramOperatorAgent/
+├── config/runner.env
+├── config/repository.env
+├── bin/run-runner.sh
+└── logs/
+```
+
+The LaunchAgent always starts the stable launcher, not a temporary extraction path. Future updates are Git-based:
+
+```bash
+cd "$HOME/Documents/PERSONAL/remote-desktop-agent"
+./scripts/sync_mac.sh
+```
+
+`sync_mac.sh` refuses to run with uncommitted changes, fast-forwards from Git, refreshes Python dependencies, rebuilds the Docker services, restarts the runner, and verifies the local health endpoint. It never overwrites `runner.env` or Telegram credentials.
+
+## Telegram behavior
+
+Ordinary messages such as `Hello` are conversation. Operational requests dispatch to an online runner. Internal transport states are not intended as the normal chat experience; use `/tasks` or `/status <task-id>` only when you need operational detail.
+
+Without an LLM, use explicit commands:
 
 ```text
 shell: pwd && git status --short --branch
@@ -39,12 +70,9 @@ Control commands:
 /cancel <full-task-id>
 ```
 
-High-impact requests create an inline Telegram approval request. The local runner independently refuses destructive commands without the recorded approval.
-
-## Validate
+## Validation
 
 ```bash
-make install
 make lint
 make test
 curl -fsS http://127.0.0.1:8080/healthz
@@ -54,26 +82,17 @@ Expected health response: `{"status":"ok"}`.
 
 ## Rollback
 
+To return the repository code to its previous Git revision:
+
 ```bash
-docker compose down
-launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.telegram.operator.runner.plist"
-rm -f "$HOME/Library/LaunchAgents/com.telegram.operator.runner.plist"
+git log --oneline -5
+git reset --hard <known-good-commit>
+./scripts/sync_mac.sh
 ```
 
-Windows:
+To stop the runner entirely:
 
-```powershell
-Unregister-ScheduledTask -TaskName TelegramOperatorRunner -Confirm:$false
+```bash
+launchctl bootout "gui/$(id -u)" \
+  "$HOME/Library/LaunchAgents/com.telegram.operator.runner.plist"
 ```
-
-## Version 2 correction: natural language and device-aware dispatch
-
-The original package incorrectly queued all ordinary Telegram messages. Version 2 separates chat from operations:
-
-- `Hello` and `How are you?` are answered as conversation.
-- `pwd`, `list files`, URLs, and explicit operational requests are dispatched only when an online runner exists.
-- When no device is online, the bot returns a direct error instead of leaving a task in `QUEUED` state.
-- Free-form requests such as `open Safari and search for ...` require `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in both the control-plane and runner environments.
-- Task state changes are pushed back into the Telegram conversation through a task watcher.
-
-After replacing the deployment, restart the control plane and bot, then restart the local runner. Confirm `/devices` shows the Mac as `online` before testing a device task.

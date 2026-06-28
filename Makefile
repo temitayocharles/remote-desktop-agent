@@ -1,4 +1,4 @@
-.PHONY: install test lint run-control run-bot run-runner up down
+.PHONY: install test lint run-control run-bot run-runner up down bootstrap-mac sync-mac
 install:
 	python3 -m pip install -e .
 test:
@@ -15,3 +15,7 @@ up:
 	docker compose up -d --build
 down:
 	docker compose down
+bootstrap-mac:
+	./scripts/bootstrap_mac.sh
+sync-mac:
+	./scripts/sync_mac.sh
