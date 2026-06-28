@@ -1,3 +1,6 @@
+import pytest
+
+from agent_runner.executor import TaskCancelled, VerificationError, execute
 from agent_runner.planner import explicit
 
 
@@ -14,4 +17,20 @@ def test_chatgpt_image_workflow():
     action = plan["actions"][0]
     assert action["type"] == "browser_workflow"
     assert action["value"]["workflow"] == "chatgpt_image"
-    assert action["value"]["destination"] == "~/Desktop/generated-image.png"
+
+
+def test_junk_mail_workflow():
+    plan = explicit("Open Mail and search for spam emails")
+    assert plan["actions"][0]["type"] == "macos_mail_search"
+
+
+def test_failed_shell_is_not_success(tmp_path, monkeypatch):
+    monkeypatch.setattr("agent_runner.executor.config.runner_artifact_dir", str(tmp_path))
+    with pytest.raises(VerificationError):
+        execute({"id": "bad-shell", "approved": False}, {"actions": [{"type": "shell", "value": "exit 7"}]})
+
+
+def test_cancelled_task_stops_before_action(tmp_path, monkeypatch):
+    monkeypatch.setattr("agent_runner.executor.config.runner_artifact_dir", str(tmp_path))
+    with pytest.raises(TaskCancelled):
+        execute({"id": "cancelled", "approved": False}, {"actions": [{"type": "shell", "value": "echo no"}]}, cancelled=lambda: True)

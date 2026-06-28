@@ -1,58 +1,53 @@
 # Telegram Operator Agent
 
-A Telegram-controlled remote operator for macOS and Windows. It accepts direct messages only from one configured Telegram numeric user ID, dispatches to registered devices, preserves task state and evidence, and requires explicit approval for destructive or irreversible actions.
+A Telegram-controlled remote operator for macOS and Windows. The agent executes explicit requests on a registered computer, records evidence, verifies task outcomes, and requires approval only for meaningful-impact actions.
 
-## Stable macOS installation
+## Canonical installation
 
-Do not run the application from disposable Downloads extractions. Clone this repository once into a durable location, for example:
-
-```bash
-git clone https://github.com/temitayocharles/remote-desktop-agent.git \
-  "$HOME/Documents/PERSONAL/remote-desktop-agent"
-cd "$HOME/Documents/PERSONAL/remote-desktop-agent"
-cp .env.example .env
-```
-
-Configure `.env` with the Telegram token, owner numeric user ID, control-plane token, runner token, and optional LLM settings. For a Mac runner on the same host as Docker, keep:
-
-```dotenv
-CONTROL_PLANE_URL=http://127.0.0.1:8080
-```
-
-Install the control plane and stable runner once:
+Keep one Git checkout at:
 
 ```bash
-docker compose up -d --build
-./scripts/bootstrap_mac.sh
+/Volumes/512-B/Documents/PERSONAL/remote-desktop-agent
 ```
 
-The installer stores runtime configuration and logs outside the Git checkout:
+First-time setup or an upgrade that changes runner dependencies:
+
+```bash
+cd "/Volumes/512-B/Documents/PERSONAL/remote-desktop-agent"
+git pull --ff-only
+bash ./scripts/bootstrap_mac.sh
+```
+
+Routine source updates:
+
+```bash
+cd "/Volumes/512-B/Documents/PERSONAL/remote-desktop-agent"
+bash ./scripts/sync_mac.sh
+```
+
+## Execution guarantees
+
+- A non-zero shell exit code is a failed task, not a success.
+- Every task creates durable evidence under `RUNNER_ARTIFACT_DIR/<task-id>/`.
+- The runner checks for cancellation between actions and while shell commands are running.
+- A user cancellation prevents a late `SUCCEEDED` update from overwriting `CANCELLED`.
+- Browser workflows and native workflows must return verified evidence before a task is marked successful.
+
+## Current native workflows
+
+- Browser automation through a persisted Chromium profile.
+- ChatGPT image generation followed by local file verification.
+- Read-only macOS Mail Junk/Spam search that returns sender, subject, and date metadata.
+- Application launch on macOS.
+
+For macOS Mail access, macOS may prompt for Automation permission. Grant it only to the local runner process when you intend to use Mail automation.
+
+## Commands
 
 ```text
-~/Library/Application Support/TelegramOperatorAgent/
-├── config/runner.env
-├── config/repository.env
-├── bin/run-runner.sh
-└── logs/
-```
-
-The LaunchAgent always starts the stable launcher, not a temporary extraction path. Future updates are Git-based:
-
-```bash
-cd "$HOME/Documents/PERSONAL/remote-desktop-agent"
-./scripts/sync_mac.sh
-```
-
-`sync_mac.sh` refuses to run with uncommitted changes, fast-forwards from Git, refreshes Python dependencies, rebuilds the Docker services, restarts the runner, and verifies the local health endpoint. It never overwrites `runner.env` or Telegram credentials.
-
-## Telegram behavior
-
-Ordinary messages such as `Hello` are conversation. Operational requests dispatch to an online runner. Internal transport states are not intended as the normal chat experience; use `/tasks` or `/status <task-id>` only when you need operational detail.
-
-Without an LLM, use explicit commands:
-
-```text
-shell: pwd && git status --short --branch
+Open ChatGPT and create a hyper-realistic image of a beer and save the photo in desktop.
+Open Mail and search for spam emails.
+shell: pwd
 browser: https://example.com
 app: Safari
 read: ~/Documents/example.txt
@@ -60,15 +55,7 @@ write: ~/Documents/example.txt
 replacement file content
 ```
 
-Control commands:
-
-```text
-/start
-/tasks
-/devices
-/status <full-task-id>
-/cancel <full-task-id>
-```
+Use `/devices`, `/tasks`, `/status <task-id>`, and `/cancel <task-id>` for operator controls.
 
 ## Validation
 
@@ -76,23 +63,4 @@ Control commands:
 make lint
 make test
 curl -fsS http://127.0.0.1:8080/healthz
-```
-
-Expected health response: `{"status":"ok"}`.
-
-## Rollback
-
-To return the repository code to its previous Git revision:
-
-```bash
-git log --oneline -5
-git reset --hard <known-good-commit>
-./scripts/sync_mac.sh
-```
-
-To stop the runner entirely:
-
-```bash
-launchctl bootout "gui/$(id -u)" \
-  "$HOME/Library/LaunchAgents/com.telegram.operator.runner.plist"
 ```
