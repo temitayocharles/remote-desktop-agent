@@ -1,6 +1,5 @@
 import json
 import re
-import shlex
 
 import httpx
 
@@ -31,8 +30,20 @@ def _chatgpt_image(text: str):
     return {"actions": [{"type": "browser_workflow", "value": {"workflow": "chatgpt_image", "prompt": prompt, "destination": destination}, "risk": "LOW", "reason": "generate the explicitly requested image and verify it is saved locally", "verify": {"result_verified": True}}], "summary": "Generate the requested image in ChatGPT and save a verified local copy."}
 
 
+def _terminal_command(text: str):
+    match = re.match(r"^open\s+(?:terminal(?:\s+or\s+iterm)?|iterm(?:\s+or\s+terminal)?)\s+(?:and\s+)?run\s+(?:the\s+)?(?:command\s+)?(?P<command>.+)$", text.strip(), re.I)
+    if not match:
+        return None
+    command = match.group("command").strip().strip(".")
+    if not command:
+        return None
+    return {"actions": [
+        {"type": "app", "value": "Terminal", "risk": "LOW", "reason": "open the requested visible terminal application", "verify": {"result_verified": True}},
+        {"type": "shell", "value": command, "risk": "HIGH", "reason": "run the explicitly requested command and capture its actual exit status/output", "verify": {"result_verified": True}},
+    ], "summary": f"Open Terminal and run: {command}"}
+
+
 def _browser_search(text: str):
-    lowered = text.lower()
     match = re.search(r"(?:open\s+)?(?P<browser>safari|brave(?:\s+browser)?|chrome|google\s+chrome|firefox)(?:\s+browser)?\s+(?:and\s+)?search\s+(?:for\s+)?(?P<query>.+)$", text, re.I)
     if not match:
         return None
@@ -44,7 +55,6 @@ def _browser_search(text: str):
 
 
 def _browser_open(text: str):
-    lowered = text.lower()
     browser_match = re.search(r"(?:open\s+)?(?P<site>chatgpt)(?:\s+(?:in|with)\s+(?P<browser>safari|brave(?:\s+browser)?|chrome|google\s+chrome|firefox))?$", text.strip(), re.I)
     if not browser_match:
         return None
@@ -82,7 +92,7 @@ def _phone_target(text: str):
 
 def explicit(text: str):
     text = text.strip()
-    for shortcut in (_phone_target, _chatgpt_image, _browser_search, _browser_open, _junk_mail, _resume_search):
+    for shortcut in (_phone_target, _chatgpt_image, _terminal_command, _browser_search, _browser_open, _junk_mail, _resume_search):
         output = shortcut(text)
         if output:
             return output

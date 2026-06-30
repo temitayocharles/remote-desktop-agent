@@ -24,10 +24,22 @@ def _osascript(script: str, *args: str) -> str:
 
 def open_application(name: str) -> dict[str, Any]:
     _require_macos()
-    completed = subprocess.run(["open", "-a", name], capture_output=True, text=True, timeout=30)
-    if completed.returncode != 0:
-        raise MacOSWorkflowError(completed.stderr.strip() or f"could not open {name}")
-    return {"type": "app", "app": name, "verified": True}
+    app_name = str(name).strip()
+    if not app_name:
+        raise MacOSWorkflowError("application name is required")
+    script = '''
+on run argv
+    set appName to item 1 of argv
+    tell application appName to activate
+end run
+'''
+    try:
+        _osascript(script, app_name)
+    except MacOSWorkflowError:
+        completed = subprocess.run(["open", "-a", app_name], capture_output=True, text=True, timeout=30)
+        if completed.returncode != 0:
+            raise MacOSWorkflowError(completed.stderr.strip() or f"could not launch {app_name}")
+    return {"type": "app", "app": app_name, "verified": True, "completion": "launched"}
 
 
 def search_junk_mail(query: str = "", limit: int = 20) -> dict[str, Any]:
@@ -70,4 +82,4 @@ end run
         parts = line.split("\t")
         if len(parts) >= 3:
             messages.append({"sender": parts[0], "subject": parts[1], "date": "\t".join(parts[2:])})
-    return {"type": "macos_mail_search", "mailbox": "Junk/Spam", "query": query, "count": len(messages), "messages": messages, "verified": True}
+    return {"type": "macos_mail_search", "mailbox": "Junk/Spam", "query": query, "count": len(messages), "messages": messages, "verified": True, "completion": "searched"}
