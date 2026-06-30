@@ -149,7 +149,7 @@ def action(item: dict[str, Any], approved: bool, cancelled: Callable[[], bool] |
         payload = json.loads(value) if isinstance(value, str) else value
         if not isinstance(payload, dict):
             raise ValueError("macos_terminal_command requires an object value")
-        result = run_terminal_command(str(payload.get("command") or ""))
+        result = run_terminal_command(str(payload.get("command") or ""), timeout_seconds=config.task_timeout_seconds)
         if result.get("exit_code") != 0:
             raise VerificationError(f"Terminal command exited {result.get('exit_code')}: {result.get('stdout', '')[-2000:]}")
     elif kind == "macos_mail_search":

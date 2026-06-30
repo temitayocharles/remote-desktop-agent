@@ -40,42 +40,68 @@ end run
         if completed.returncode != 0:
             raise MacOSWorkflowError(completed.stderr.strip() or f"could not launch {app_name}")
     return {"type": "app", "app": app_name, "verified": True, "completion": "launched"}
-def run_terminal_command(command: str) -> dict[str, Any]:
-    """Run a command in a visible Terminal tab and return its actual result."""
+
+def run_terminal_command(command: str, timeout_seconds: int = 900) -> dict[str, Any]:
+    """Run a command visibly in Terminal and collect its result from task-local files."""
     _require_macos()
     command = str(command).strip()
     if not command or "\x00" in command:
         raise MacOSWorkflowError("a non-empty terminal command is required")
-    wrapped = command + "\n__telegram_operator_status=$?\n" + "printf '\\n__TELEGRAM_OPERATOR_EXIT__:%s\\n' \"$__telegram_operator_status\"\n"
-    script = "\n".join([
-        "on run argv",
-        "    set commandText to item 1 of argv",
-        "    tell application \"Terminal\"",
-        "        activate",
-        "        if (count of windows) is 0 then do script \"\"",
-        "        set targetWindow to front window",
-        "        do script commandText in targetWindow",
-        "        set targetTab to selected tab of targetWindow",
-        "        repeat while busy of targetTab",
-        "            delay 0.2",
-        "        end repeat",
-        "        return contents of targetTab",
-        "    end tell",
-        "end run",
-    ])
-    transcript = _osascript(script, wrapped)
-    marker = "__TELEGRAM_OPERATOR_EXIT__:"
-    before, separator, after = transcript.rpartition(marker)
-    if not separator:
-        raise MacOSWorkflowError("Terminal did not return a completion marker; the command may still be running")
-    try:
-        exit_code = int(after.splitlines()[0].strip())
-    except (IndexError, ValueError) as exc:
-        raise MacOSWorkflowError("Terminal returned an unreadable completion marker") from exc
-    command_start = before.rfind(command)
-    stdout = before[command_start + len(command):].lstrip("\r\n") if command_start >= 0 else before
-    return {"type": "macos_terminal_command", "terminal": "Terminal", "command": command, "exit_code": exit_code, "stdout": stdout[-12000:], "verified": exit_code == 0, "completion": "executed_in_visible_terminal"}
 
+    import tempfile
+    import time
+    from pathlib import Path
+
+    timeout_seconds = max(1, int(timeout_seconds))
+    with tempfile.TemporaryDirectory(prefix="telegram-operator-terminal-") as directory:
+        root = Path(directory)
+        output_path = root / "stdout.txt"
+        status_path = root / "exit-status.txt"
+        # The user command remains visible in Terminal. It runs in a subshell so an `exit`
+        # in the requested command cannot prevent status capture by the wrapper shell.
+        wrapped = "\n".join([
+            "(",
+            command,
+            f") > >(tee {output_path}) 2>&1",
+            "__telegram_operator_status=$?",
+            f"print -r -- \"$__telegram_operator_status\" > {status_path}",
+        ])
+        script = "\n".join([
+            "on run argv",
+            "    set commandText to item 1 of argv",
+            "    tell application \"Terminal\"",
+            "        activate",
+            "        if (count of windows) is 0 then do script \"\"",
+            "        do script commandText in front window",
+            "    end tell",
+            "end run",
+        ])
+        _osascript(script, wrapped)
+
+        deadline = time.monotonic() + timeout_seconds
+        while not status_path.is_file():
+            if time.monotonic() >= deadline:
+                raise MacOSWorkflowError(
+                    f"Terminal command exceeded {timeout_seconds} seconds; it may still be running in the visible Terminal window"
+                )
+            time.sleep(0.1)
+
+        # Give tee a brief opportunity to flush its final bytes after the status file appears.
+        time.sleep(0.1)
+        try:
+            exit_code = int(status_path.read_text().strip())
+        except ValueError as exc:
+            raise MacOSWorkflowError("Terminal wrote an invalid exit status") from exc
+        stdout = output_path.read_text(errors="replace")[-12000:] if output_path.exists() else ""
+        return {
+            "type": "macos_terminal_command",
+            "terminal": "Terminal",
+            "command": command,
+            "exit_code": exit_code,
+            "stdout": stdout,
+            "verified": exit_code == 0,
+            "completion": "executed_in_visible_terminal",
+        }
 
 def search_junk_mail(query: str = "", limit: int = 20) -> dict[str, Any]:
     _require_macos()
