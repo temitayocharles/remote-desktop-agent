@@ -82,8 +82,16 @@ def format_result(task: dict[str, Any]) -> str:
             opened = compact(action.get("opened"), 1000)
             lines.append(f"Opened: {opened}")
         elif kind == "app":
-            code = action.get("exit_code")
-            lines.append("Application opened." if code == 0 else f"Application launch failed: {compact(action.get('stderr') or action.get('stdout'))}")
+            if action.get("verified"):
+                lines.append(f"Opened {action.get('app') or 'the application'}.")
+            else:
+                lines.append(f"Application launch failed: {compact(action.get('stderr') or action.get('stdout') or 'No operating-system confirmation was returned.')}")
+        elif kind == "macos_terminal_command":
+            stdout = compact(action.get("stdout"), 2200)
+            if action.get("exit_code") == 0 and action.get("verified"):
+                lines.append(f"Opened Terminal and ran: {action.get('command', '')}\n\n{stdout or 'Command completed successfully.'}")
+            else:
+                lines.append(f"Terminal command failed with exit code {action.get('exit_code')}.\n{stdout or 'No output returned.'}")
         elif kind == "file_read":
             content = compact(action.get("content"), 2200)
             lines.append(content or f"Read {action.get('path', 'file')}.")

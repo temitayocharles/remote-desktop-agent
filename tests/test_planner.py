@@ -17,11 +17,10 @@ def test_chatgpt_image_workflow():
     assert plan["actions"][0]["type"] == "browser_workflow"
 
 
-def test_terminal_command_honors_both_requested_steps():
+def test_terminal_command_runs_in_visible_terminal_workflow():
     plan = explicit("Open terminal or iterm and run the command pwd")
-    assert [item["type"] for item in plan["actions"]] == ["app", "shell"]
-    assert plan["actions"][0]["value"] == "Terminal"
-    assert plan["actions"][1]["value"] == "pwd"
+    assert [item["type"] for item in plan["actions"]] == ["macos_terminal_command"]
+    assert plan["actions"][0]["value"]["command"] == "pwd"
 
 
 def test_browser_search_workflow():

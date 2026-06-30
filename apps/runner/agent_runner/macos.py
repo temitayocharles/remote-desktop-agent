@@ -40,6 +40,41 @@ end run
         if completed.returncode != 0:
             raise MacOSWorkflowError(completed.stderr.strip() or f"could not launch {app_name}")
     return {"type": "app", "app": app_name, "verified": True, "completion": "launched"}
+def run_terminal_command(command: str) -> dict[str, Any]:
+    """Run a command in a visible Terminal tab and return its actual result."""
+    _require_macos()
+    command = str(command).strip()
+    if not command or "\x00" in command:
+        raise MacOSWorkflowError("a non-empty terminal command is required")
+    wrapped = command + "\n__telegram_operator_status=$?\n" + "printf '\\n__TELEGRAM_OPERATOR_EXIT__:%s\\n' \"$__telegram_operator_status\"\n"
+    script = "\n".join([
+        "on run argv",
+        "    set commandText to item 1 of argv",
+        "    tell application \"Terminal\"",
+        "        activate",
+        "        if (count of windows) is 0 then do script \"\"",
+        "        set targetWindow to front window",
+        "        do script commandText in targetWindow",
+        "        set targetTab to selected tab of targetWindow",
+        "        repeat while busy of targetTab",
+        "            delay 0.2",
+        "        end repeat",
+        "        return contents of targetTab",
+        "    end tell",
+        "end run",
+    ])
+    transcript = _osascript(script, wrapped)
+    marker = "__TELEGRAM_OPERATOR_EXIT__:"
+    before, separator, after = transcript.rpartition(marker)
+    if not separator:
+        raise MacOSWorkflowError("Terminal did not return a completion marker; the command may still be running")
+    try:
+        exit_code = int(after.splitlines()[0].strip())
+    except (IndexError, ValueError) as exc:
+        raise MacOSWorkflowError("Terminal returned an unreadable completion marker") from exc
+    command_start = before.rfind(command)
+    stdout = before[command_start + len(command):].lstrip("\r\n") if command_start >= 0 else before
+    return {"type": "macos_terminal_command", "terminal": "Terminal", "command": command, "exit_code": exit_code, "stdout": stdout[-12000:], "verified": exit_code == 0, "completion": "executed_in_visible_terminal"}
 
 
 def search_junk_mail(query: str = "", limit: int = 20) -> dict[str, Any]:

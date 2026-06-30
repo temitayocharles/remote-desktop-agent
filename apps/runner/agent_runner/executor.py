@@ -12,7 +12,7 @@ from typing import Any, Callable
 from .browser import run_browser_workflow
 from .config import config
 from .evidence import EvidenceWriter
-from .macos import open_application, search_junk_mail
+from .macos import open_application, run_terminal_command, search_junk_mail
 
 HIGH_TERMS = (
     "rm -rf", "delete", "destroy", "drop database", "terraform apply", "kubectl delete",
@@ -97,7 +97,7 @@ def _browser_search(payload: dict[str, Any]) -> dict[str, Any]:
 def _verify(item: dict[str, Any], result: dict[str, Any]) -> None:
     rule = item.get("verify")
     if rule is None:
-        if result.get("type") in {"browser_workflow", "macos_mail_search", "shell", "app", "browser", "browser_search"} and not result.get("verified"):
+        if result.get("type") in {"browser_workflow", "macos_terminal_command", "macos_mail_search", "shell", "app", "browser", "browser_search"} and not result.get("verified"):
             raise VerificationError(f"{result.get('type')} returned without verification")
         return
     if not isinstance(rule, dict):
@@ -145,6 +145,13 @@ def action(item: dict[str, Any], approved: bool, cancelled: Callable[[], bool] |
             run = subprocess.run([str(value)], capture_output=True, text=True)
             result.update({"exit_code": run.returncode, "stdout": run.stdout[-4000:], "stderr": run.stderr[-4000:], "verified": run.returncode == 0})
         result.setdefault("completion", "launched")
+    elif kind == "macos_terminal_command":
+        payload = json.loads(value) if isinstance(value, str) else value
+        if not isinstance(payload, dict):
+            raise ValueError("macos_terminal_command requires an object value")
+        result = run_terminal_command(str(payload.get("command") or ""))
+        if result.get("exit_code") != 0:
+            raise VerificationError(f"Terminal command exited {result.get('exit_code')}: {result.get('stdout', '')[-2000:]}")
     elif kind == "macos_mail_search":
         payload = json.loads(value) if isinstance(value, str) else value
         if not isinstance(payload, dict):

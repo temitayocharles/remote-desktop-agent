@@ -6,7 +6,7 @@ import httpx
 from .config import config
 
 SYSTEM = '''You are the execution planner for a personal remote computer operator. Return strict JSON only:
-{"actions":[{"type":"shell|browser|browser_open|browser_search|browser_workflow|app|macos_mail_search|file_read|file_write|unsupported_target","value":"... or an object","risk":"LOW|MEDIUM|HIGH","reason":"...","verify":{"result_verified":true}}],"summary":"..."}
+{"actions":[{"type":"shell|browser|browser_open|browser_search|browser_workflow|app|macos_terminal_command|macos_mail_search|file_read|file_write|unsupported_target","value":"... or an object","risk":"LOW|MEDIUM|HIGH","reason":"...","verify":{"result_verified":true}}],"summary":"..."}
 Use minimal, truthful actions. browser and browser_open verify only that the OS accepted the launch. browser_search verifies that the named browser was asked to open the search URL; it does not claim to have read search results. browser_workflow is for interacting with a website and requires workflow-level evidence. Do not invent credentials, contacts, or phone access.'''
 
 SAFE_SHORTCUTS = {
@@ -37,10 +37,7 @@ def _terminal_command(text: str):
     command = match.group("command").strip().strip(".")
     if not command:
         return None
-    return {"actions": [
-        {"type": "app", "value": "Terminal", "risk": "LOW", "reason": "open the requested visible terminal application", "verify": {"result_verified": True}},
-        {"type": "shell", "value": command, "risk": "HIGH", "reason": "run the explicitly requested command and capture its actual exit status/output", "verify": {"result_verified": True}},
-    ], "summary": f"Open Terminal and run: {command}"}
+    return {"actions": [{"type": "macos_terminal_command", "value": {"command": command}, "risk": "LOW", "reason": "open Terminal visibly, run the requested command in that Terminal tab, and capture its exit status/output", "verify": {"result_verified": True}}], "summary": f"Open Terminal and run: {command}"}
 
 
 def _browser_search(text: str):
