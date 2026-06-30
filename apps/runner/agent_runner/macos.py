@@ -42,12 +42,13 @@ end run
     return {"type": "app", "app": app_name, "verified": True, "completion": "launched"}
 
 def run_terminal_command(command: str, timeout_seconds: int = 900) -> dict[str, Any]:
-    """Run a command visibly in Terminal and collect its result from task-local files."""
+    """Run a command visibly in Terminal with clean presentation and durable result capture."""
     _require_macos()
     command = str(command).strip()
     if not command or "\x00" in command:
         raise MacOSWorkflowError("a non-empty terminal command is required")
 
+    import shlex
     import tempfile
     import time
     from pathlib import Path
@@ -57,16 +58,22 @@ def run_terminal_command(command: str, timeout_seconds: int = 900) -> dict[str, 
         root = Path(directory)
         output_path = root / "stdout.txt"
         status_path = root / "exit-status.txt"
-        # The user command remains visible in Terminal. It runs in a subshell so an `exit`
-        # in the requested command cannot prevent status capture by the wrapper shell.
-        wrapped = "\n".join([
+        script_path = root / "run-command.zsh"
+        visible_command = command.replace("\n", " ").strip()
+        script_path.write_text("\n".join([
+            "#!/bin/zsh",
+            "setopt pipefail",
+            f"print -r -- {shlex.quote('$ ' + visible_command)}",
             "(",
             command,
-            f") > >(tee {output_path}) 2>&1",
-            "__telegram_operator_status=$?",
-            f"print -r -- \"$__telegram_operator_status\" > {status_path}",
-        ])
-        script = "\n".join([
+            f") 2>&1 | tee {shlex.quote(str(output_path))}",
+            "__telegram_operator_status=${pipestatus[1]}",
+            f"print -r -- \"$__telegram_operator_status\" > {shlex.quote(str(status_path))}",
+            "",
+        ]))
+        script_path.chmod(0o700)
+        launch_command = f"clear; source {shlex.quote(str(script_path))}"
+        applescript = "\n".join([
             "on run argv",
             "    set commandText to item 1 of argv",
             "    tell application \"Terminal\"",
@@ -76,7 +83,7 @@ def run_terminal_command(command: str, timeout_seconds: int = 900) -> dict[str, 
             "    end tell",
             "end run",
         ])
-        _osascript(script, wrapped)
+        _osascript(applescript, launch_command)
 
         deadline = time.monotonic() + timeout_seconds
         while not status_path.is_file():
@@ -86,7 +93,6 @@ def run_terminal_command(command: str, timeout_seconds: int = 900) -> dict[str, 
                 )
             time.sleep(0.1)
 
-        # Give tee a brief opportunity to flush its final bytes after the status file appears.
         time.sleep(0.1)
         try:
             exit_code = int(status_path.read_text().strip())
