@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
 from .models import Task, Device
 from .schemas import TaskCreate, TaskUpdate, DeviceRegister, DeviceHeartbeat
-from .service import bot_auth, create_task, serialize, register_runner, authorize_runner, next_task, audit
+from .service import bot_auth, create_task, serialize, register_runner, authorize_runner, next_task, audit, activity, conversation_context
 from .llm import classify, chat_reply, LLMUnavailable
 
-app = FastAPI(title="Telegram Operator Agent", version="2.1.0")
+app = FastAPI(title="Telegram Operator Agent", version="2.2.0")
 
 @app.on_event("startup")
 def startup():
@@ -62,6 +62,16 @@ def task(task_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "task not found")
     return serialize(item)
 
+@app.get("/v1/tasks/{task_id}/activity", dependencies=[Depends(authorize_bot)])
+def task_activity(task_id: str, limit: int = 50, db: Session = Depends(get_db)):
+    if not db.get(Task, task_id):
+        raise HTTPException(404, "task not found")
+    return activity(db, task_id, limit)
+
+@app.get("/v1/context/{requester_id}", dependencies=[Depends(authorize_bot)])
+def context(requester_id: str, db: Session = Depends(get_db)):
+    return conversation_context(db, requester_id)
+
 @app.post("/v1/tasks/{task_id}/approve", dependencies=[Depends(authorize_bot)])
 def approve(task_id: str, requester_id: str, db: Session = Depends(get_db)):
     item = db.get(Task, task_id)
@@ -73,11 +83,13 @@ def approve(task_id: str, requester_id: str, db: Session = Depends(get_db)):
         raise HTTPException(409, "approval not required")
     if item.approval_expires_at and item.approval_expires_at.timestamp() < __import__('time').time():
         item.status = "FAILED_POLICY"
+        audit(db, item.id, "TASK_FAILED_POLICY", "Approval expired")
         db.commit()
         raise HTTPException(409, "approval expired")
     item.approved = True
     item.status = "QUEUED"
     audit(db, item.id, "TASK_APPROVED", "Approved through Telegram")
+    audit(db, item.id, "TASK_QUEUED", "Queued after approval")
     db.commit()
     return serialize(item)
 
@@ -141,7 +153,7 @@ def update(device_id: str, task_id: str, payload: TaskUpdate, _: Device = Depend
         item.result_json = json.dumps(payload.result)
     if payload.error is not None:
         item.error = payload.error
-    audit(db, item.id, "TASK_" + payload.status, payload.error or "runner update")
+    audit(db, item.id, "TASK_" + payload.status, payload.error or "Runner update")
     db.commit()
     return serialize(item)
 
