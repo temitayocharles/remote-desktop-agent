@@ -8,3 +8,5 @@ agent.db
 artifacts/
 telegram_operator_agent.egg-info/
 .DS_Store
+
+*.egg-info/
